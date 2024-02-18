@@ -2,7 +2,6 @@
 using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using System.Collections.Generic;
 using TransactionApi.API.Common.Models;
 
 namespace TransactionApi.API.Common.BackgroundServices
@@ -13,6 +12,7 @@ namespace TransactionApi.API.Common.BackgroundServices
         private readonly IOptions<DbSettings> _transactionDbSettings;
         private readonly IMongoCollection<Transaction> _transactionsCollection;
         private readonly IMongoCollection<ExchangeRate> _ratesCollection;
+        private readonly List<string> _currencies = new List<string> { "USD", "RUB", "EUR", "CNY" };
 
         public ExchangeRatesBackgroundService(HttpClient httpClient,
             IOptions<DbSettings> transactionDbSettings)
@@ -35,49 +35,45 @@ namespace TransactionApi.API.Common.BackgroundServices
 
         public async Task UpdatetTansactionRates()
         {
-            var filter = Builders<Transaction>.Filter.Exists(x => x.AmountInCurrencies, false);
+            var filter = Builders<Transaction>.Filter.Eq("AmountInCurrencies", BsonNull.Value);
             var transactions = await _transactionsCollection.Find(filter).ToListAsync();
+
+            var result = await _transactionsCollection.Find(filter).ToListAsync();
             if (!transactions.Any())
             {
                 return;
             }
-            var documents = await _ratesCollection.Find(new BsonDocument()).ToListAsync();
-            var ratesDictionary = documents.ToDictionary(model => model.Code, model => model.Rate ?? 0m);
-            var bulkUpdates = new List<WriteModel<Transaction>>();
+            var documentRates = await _ratesCollection.Find(new BsonDocument()).ToListAsync();
+            var ratesDictionary = documentRates.ToDictionary(model => model.Code, model => model.Rate ?? 0m);
+            var bulkUpdateOperations = new List<WriteModel<Transaction>>();
 
             foreach (var transaction in transactions)
             {
-                var amountInCurrencies = new Dictionary<string, decimal>();
-
-                foreach (var currencyRate in ratesDictionary)
+                var currencyConvertedList = new List<BsonDocument>();
+                foreach (var currency in _currencies)
                 {
-                    if (transaction.Currency != currencyRate.Key)
-                    {
-                        var convertedAmount = transaction.Amount * currencyRate.Value;
-                        amountInCurrencies[currencyRate.Key] = convertedAmount;
-                    }
+                    var currencyConverted = Convert(ratesDictionary, transaction, currency);
+                    currencyConvertedList.Add(currencyConverted);
                 }
-                transaction.AmountInCurrencies = new CurrencyAmount()
-                {
-                    AmountCurrency = amountInCurrencies
-                };
+                transaction.AmountInCurrencies = currencyConvertedList;
+                var update = Builders<Transaction>.Update.Set(t => t.AmountInCurrencies, transaction.AmountInCurrencies);
 
-                //var updateFilter = Builders<Transaction>.Filter.Eq(x => x.Id, transaction.Id);
-                //var update = Builders<Transaction>.Update.Set("AmountInCurrencies", amountInCurrencies);
-                //await _transactionsCollection.UpdateOneAsync(updateFilter, transaction);
-                //var doc = new BsonDocument(amountInCurrencies);
-                //transaction.AmountInCurrencies = doc;
-
-
-                var updateDefinition = Builders<Transaction>.Update
-                      .Set(x => x.AmountInCurrencies, transaction.AmountInCurrencies);
-
-                var updateFilter = Builders<Transaction>.Filter.Eq(x => x.Id, transaction.Id);
-                await _transactionsCollection.UpdateOneAsync(updateFilter, updateDefinition);
-                //bulkUpdates.Add(updateModel);
+                bulkUpdateOperations.Add(new UpdateOneModel<Transaction>(filter, update));
             }
 
-            //var response = await _transactionsCollection.BulkWriteAsync(bulkUpdates);
+           await _transactionsCollection.BulkWriteAsync(bulkUpdateOperations);
+        }
+
+        public BsonDocument Convert(Dictionary<string, decimal> rates, Transaction transaction, string toCurrency)
+        {
+            var result = new BsonDocument();
+
+            var fromAmount = transaction.Currency == "RUB" ? transaction.Amount :
+                transaction.Amount * rates[transaction.Currency];
+            var toAmount = toCurrency == "RUB" ? fromAmount :
+                fromAmount / rates[toCurrency];
+
+            return result.Add(toCurrency, decimal.Round(toAmount,2));
         }
     }
 }

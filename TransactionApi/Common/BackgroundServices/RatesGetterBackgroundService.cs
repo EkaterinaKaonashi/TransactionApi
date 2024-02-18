@@ -4,8 +4,6 @@ using System.Xml.Linq;
 using System.Xml;
 using TransactionApi.API.Common.Models;
 using MongoDB.Driver;
-using System.Transactions;
-using System.Linq;
 
 namespace TransactionApi.API.Common.BackgroundServices
 {
@@ -33,7 +31,7 @@ namespace TransactionApi.API.Common.BackgroundServices
             while (!stoppingToken.IsCancellationRequested)
             {
                 await CreateExchangeRatesAsync();
-                await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+                await Task.Delay(TimeSpan.FromHours(12), stoppingToken);
             }
         }
 

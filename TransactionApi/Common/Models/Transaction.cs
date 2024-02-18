@@ -20,12 +20,6 @@ namespace TransactionApi.API.Common.Models
         public DateTime CreatedOn { get; set; }
 
         [JsonIgnore]
-        public CurrencyAmount? AmountInCurrencies { get; set; }
-    }
-
-    public class CurrencyAmount
-    {
-        public ObjectId Id { get; set; }
-        public Dictionary<string, decimal> AmountCurrency { get; set; }
+        public List<BsonDocument>? AmountInCurrencies { get; set; }
     }
 }

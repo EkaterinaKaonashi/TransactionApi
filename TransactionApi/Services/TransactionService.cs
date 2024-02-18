@@ -1,5 +1,7 @@
 ﻿using Microsoft.Extensions.Options;
+using MongoDB.Bson;
 using MongoDB.Driver;
+using TransactionApi.API.Common.BackgroundServices;
 using TransactionApi.API.Common.Models;
 
 namespace TransactionApi.API.Services
